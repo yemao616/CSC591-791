@@ -1,0 +1,28 @@
+
+1. extracted whole feature set for each time point, ( FAMD_R_code:facotered analysis for mixed data ) 
+   For continuous features,  Minus the mean and Divide the standard deviation (SD), which is given in 'continuous.features.mean&sd.csv',
+   There are total 100 continuous features.
+   For discrete features, find the corresponding eigenvectors in the 'discrete.eigenvector.csv'
+
+2. Multiple the standardized feature values with eigenvectors (both continuous and discrete features), only select the 1-30 columns in the eigenvector.csv, then we can transfer the original feature value into a smaller space with 30 dimensions.
+
+3. Calculate the emission probability based on mu, sigma files and Current Action.
+   for mu.txt files, there are 30 rows, each of which indicates one dimension and 5 hidden states.
+   for sigma,txt files, each line is a diagnal matrix, containing 30 elements.
+   You can use miltivariate Gaussian PDF to calculate the probability given 30 dimensions, OR
+   You can use sigle-variage Gaussian PDF to calculate the probability of one dimensions, then multiple the 30 probabilities.
+
+4. Calculate alpha_t (forward) at current time step t,
+   alpha_t(z=j) = P(Y_{t} | z=j) * \sum_{i=1}^{K} alpha_{t-1}(z=i)*A(z_{t-1}=i, z_{t}=j)
+
+5. Normalize alpha_t, which is a vector containing 5 elements (cause we have 5 hidden states)
+   the normalized alpha_t is the hidden state distribution at time step t.
+
+6. Based on 'single_state_QFun.txt', we can calculate the Q function of the hidden state distribution for each action.
+
+7. For deterministic policy, we can just choose the action asociated with the maximum value of Q function as the current optimal choice.
+   For Stochastic policy, we need to transfer Q function into probability by use softmax function with theta, which is 0.04,  then we can do the same thing as we did for MDP stochastic policy,
+
+   
+
+

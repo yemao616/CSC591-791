@@ -1,0 +1,227 @@
+library(FactoMineR)
+library(hash)
+
+#######################
+# need to update the training data from DT34 folder
+#######################
+
+number2binary = function(number, noBits) {
+  binary_vector = rev(as.numeric(intToBits(number)))
+  if(missing(noBits)) {
+    return(binary_vector)
+  } else {
+    binary_vector[-(1:(length(binary_vector) - noBits))]
+  }
+}
+
+do.binary.data <- function(){
+  prefix <- '/Users/Ye/🍃ymao4/📚Research/pomdp_code'
+/  filename <- paste(prefix,'pomdp_pyrenees.csv' ,sep="")
+  student.data <- read.csv(filename)
+  
+  start.Fidx <- 12
+  
+  feature.list <- names(student.data)[start.Fidx:ncol(student.data)]
+  data <- student.data[,feature.list]
+  
+  # extract discrete features
+  feature.type <- rep('continuous', length(feature.list))
+  for(feature in feature.list){
+    value.range <- unique(data[,feature])
+    if(length(value.range) < 9){
+      feature.type[which(feature.list==feature)] <- 'discrete'
+    }
+  }
+  discrete.features <- feature.list[which(feature.type=='discrete')]
+  continuous.features <- feature.list[which(feature.type=='continuous')]
+  ##########################
+  # encode discrete features
+  ##########################
+  
+  # unify the discrete features, start from 0.
+  filename <- paste(prefix, 'discrete.features.map.txt',sep="")
+  fileConn <- file(filename)
+  lines <- c()
+  for(feature in discrete.features){
+    value.range <- sort(unique(data[,feature]))
+    new.line <- c(feature, value.range,'->')
+    new.value.range <- 0:(length(value.range)-1)
+    new.line <- c(new.line, new.value.range)
+    new.line <- paste(new.line, collapse=" ")
+    lines <- c(lines,new.line)
+  }
+  writeLines(lines, fileConn)
+  close(fileConn)
+  
+  # convert discrete features into new range
+  for(feature in discrete.features){
+    value.range <- sort(unique(data[,feature]))
+    # h <- hash()
+    # .set( h, keys=value.range, values=0:(length(value.range)-1))
+    value.list <- data[,feature]
+    
+    if(value.range[1] < 0){
+      # reverse order can solve the problem that the index starts from negative value
+      for(value in sort(value.range, decreasing = TRUE)){
+        value.list[which(value.list == value)] <- (which(value.range==value)-1)
+      }
+    }
+    else{
+      for(value in value.range){
+        value.list[which(value.list == value)] <- (which(value.range==value)-1)
+      }
+    }
+    data[,feature] <- value.list
+  }
+  
+  # do binary features
+  nominal.features <- rep(0, length(discrete.features))
+  for(feature in discrete.features){
+    value.range <- sort(unique(data[,feature]))
+    if(length(value.range) > 2){
+      nominal.features[which(discrete.features==feature)] <- 1
+      # define the number of units used for binary array
+      count <- ceiling(sqrt(length(value.range)))
+      #define new features
+      new.features <- paste(feature, 1:count, sep="-")
+      data[new.features] <- NA
+      # tranfer numeric feature into binary ones
+      for(value in value.range){
+        binary.vector <- number2binary(value, count)
+        num <- nrow(data[which(data[,feature]==value),])
+        data[which(data[,feature]==value), new.features] <- t(replicate(num, binary.vector))
+      }
+    }
+  }
+  
+  nominal.features <- discrete.features[which(nominal.features==1)]
+  # remove original nominal.featues
+  data <- data[, !(names(data)%in%nominal.features)]
+  
+  # re-order the data set, first part is continuous features, second part is discrete features
+  discrete.features <- setdiff(as.character(names(data)), continuous.features)
+  feature.list <- c(continuous.features, discrete.features)
+  data <- data[feature.list]
+  start.discrete.idx <- length(continuous.features)+1
+  
+  for(feature in discrete.features){
+    data[,feature] <- factor(data[,feature])
+  }
+  return(data)
+} 
+
+
+relabel.discrete.data <- function(){
+  
+  prefix <- '/Users/Ye/🍃ymao4/📚Research/pomdp_code/'
+  filename <- paste(prefix,'pomdp_pyrenees.csv', sep="")
+  student.data <- read.csv(filename)
+  
+  start.Fidx <- 12
+  
+  feature.list <- names(student.data)[start.Fidx:ncol(student.data)]
+  data <- student.data[,feature.list]
+  
+  # extract discrete features
+  feature.type <- rep('continuous', length(feature.list))
+  for(feature in feature.list){
+    value.range <- unique(data[,feature])
+    if(length(value.range) < 9){
+      feature.type[which(feature.list==feature)] <- 'discrete'
+    }
+  }
+  discrete.features <- feature.list[which(feature.type=='discrete')]
+  continuous.features <- feature.list[which(feature.type=='continuous')]
+  
+  # re-order the data set, first part is continuous features, second part is discrete features
+  discrete.features <- setdiff(as.character(names(data)), continuous.features)
+  feature.list <- c(continuous.features, discrete.features)
+  data <- data[feature.list]
+  start.discrete.idx <- length(continuous.features)+1
+  
+  #relabel discrete data
+  for(feature in discrete.features){
+    value.range <- sort(unique(data[,feature]))
+    new.value.range <- paste(feature,":",value.range,sep="")
+    for(idx in 1:length(value.range)){
+      value <- value.range[idx]
+      data[which(data[,feature]==value), feature] <- rep(new.value.range[idx], length(which(data[,feature]==value)))
+    }
+    # need to transfer it to factor
+    data[,feature] <- factor(data[,feature])
+  }
+  return(list('data'=data, 'student.info' = student.data[1:(start.Fidx-1)]))
+}
+
+famd.process <- function(data){
+  ##################
+  # factor abalysis of mixed data
+  ##################
+  library('matrixStats')
+  
+  # extract discrete features
+  feature.list <- as.character(names(data))
+  feature.type <- rep('continuous', length(feature.list))
+  for(feature in feature.list){
+    value.range <- unique(data[,feature])
+    if(length(value.range) < 9){
+      feature.type[which(feature.list==feature)] <- 'discrete'
+    }
+  }
+  continuous.features <- feature.list[which(feature.type=='continuous')]
+  
+  # centering the data though minus the mean
+  mean.values <- colMeans(data[,continuous.features])
+  var.values <- colVars(as.matrix(data[,continuous.features]))
+  sd.values <- sqrt(var.values) 
+  
+  evaluations <- data.frame('mean' = mean.values, 'sd' = sd.values)
+  
+  data[,continuous.features] <- data[,continuous.features] - t(replicate(nrow(data), mean.values))
+  data[,continuous.features] <- sweep(data[,continuous.features], 2, sd.values, '/')
+  result <- FAMD(data, ncp=50, graph=FALSE)
+  
+  plot(1:50, result$eig$`cumulative percentage of variance`)
+  
+  famd.data <- result$ind$coord
+  discrete.eig <- result$quali.var$coord
+  continuous.eig <- result$quanti.var$coord 
+  
+  prefix <- '/Users/Ye/🍃ymao4/📚Research/pomdp_code/'
+  filename <- paste(prefix,'continuous.eigenvector.csv' ,sep="")
+  write.csv(continuous.eig, filename, row.names = TRUE, col.names = FALSE)
+  
+  filename <- paste(prefix,'egi.csv' ,sep="")
+  write.csv(result$eig, filename, row.names = TRUE, col.names = FALSE)
+  
+  filename <- paste(prefix,'discrete.eigenvector.csv' ,sep="")
+  write.csv(discrete.eig, filename, row.names = TRUE, col.names = FALSE)
+  filename <- paste(prefix,'continuous.features.mean&sd.csv' ,sep="")
+  write.csv(evaluations, filename, row.names = TRUE, col.names = FALSE)
+  return(famd.data)
+}
+
+main.process <- function(){
+  
+  # data <- do.binary.data()
+  
+  whole.data <- relabel.discrete.data()
+  student.info <- whole.data$student.info
+  data <- whole.data$data
+  
+  # remove features
+ # prefix <- '/Users/Ye/Dropbox/CSC791_projects/Assigned project/FAMD/'
+#  filename <- paste(prefix, 'remove_features.csv',sep="")
+ # drop.features <- read.csv(filename)
+  #drop.features <- as.character(drop.features$name)
+  
+#  data <- data[, !(names(data)%in%drop.features)]
+  
+  # do famd analysis
+  famd.data <- famd.process(data)
+  whole.data <- cbind(student.info, famd.data)
+  
+  prefix <- '/Users/Ye/🍃ymao4/📚Research/pomdp_code/'
+  filename <- paste(prefix,'reduce.famd.features.data.csv' ,sep="")
+  write.csv(whole.data, filename, row.names = FALSE, col.names = TRUE, sep = ",")
+}
